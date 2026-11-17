@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kairos</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #0b0b1a; color: #e8e6f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  canvas { position: fixed; inset: 0; z-index: 0; }
+  main { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: 56px 20px; }
+  h1 { font-weight: 300; letter-spacing: 6px; text-align: center; margin-bottom: 4px; }
+  .sub { text-align: center; color: #9a97c0; margin-bottom: 36px; }
+  form, .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 20px; backdrop-filter: blur(8px); }
+  label { display: block; font-size: 13px; color: #9a97c0; margin: 14px 0 6px; }
+  input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; font-size: 16px; }
+  .row { display: flex; gap: 12px; } .row > div { flex: 1; }
+  button { width: 100%; margin-top: 22px; padding: 14px; border: 0; border-radius: 10px; background: linear-gradient(135deg, #7c5cff, #c06cff); color: #fff; font-size: 16px; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  #out { margin-top: 28px; }
+  .big { font-size: 20px; margin: 0 0 4px; } .muted { color: #9a97c0; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .planet { padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.25); }
+  .planet b { display: block; margin-bottom: 4px; } .planet span { font-size: 13px; color: #b9b6dd; }
+  .err { color: #ff8a9b; margin-top: 16px; }
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<main>
+  <h1>KAIROS</h1>
+  <p class="sub">Enter your birth details</p>
+  <form id="f">
+    <label>Date of birth</label>
+    <input type="date" id="date" required>
+    <div class="row">
+      <div><label>Time of birth</label><input type="time" id="time" required></div>
+    </div>
+    <label>Place of birth</label>
+    <input type="text" id="place" placeholder="e.g. Hyderabad, India" required>
+    <button id="btn">Generate chart</button>
+  </form>
+  <div id="out"></div>
+</main>
+<script>
+  // starfield
+  const c = document.getElementById('stars'), x = c.getContext('2d');
+  let stars = [];
+  function resize() { c.width = innerWidth; c.height = innerHeight; stars = Array.from({length: 120}, () => ({x: Math.random()*c.width, y: Math.random()*c.height, r: Math.random()*1.4, p: Math.random()*6})); }
+  function draw(t) { x.clearRect(0,0,c.width,c.height); stars.forEach(s => { x.globalAlpha = .4 + .4*Math.sin(t/900 + s.p); x.fillStyle = '#fff'; x.beginPath(); x.arc(s.x, s.y, s.r, 0, 7); x.fill(); }); requestAnimationFrame(draw); }
+  addEventListener('resize', resize); resize(); requestAnimationFrame(draw);
+
+  const out = document.getElementById('out'), btn = document.getElementById('btn');
+  document.getElementById('f').addEventListener('submit', async e => {
+    e.preventDefault();
+    out.innerHTML = ''; btn.disabled = true; btn.textContent = 'Reading the sky...';
+    try {
+      const place = document.getElementById('place').value;
+      const g = await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(place))).json();
+      if (!g.results) throw new Error('Could not find that place. Try "City, Country".');
+      const p = g.results[0];
+      const q = new URLSearchParams({ date: date.value, time: time.value, lat: p.latitude, lon: p.longitude, tz: p.timezone });
+      const res = await fetch('/chart?' + q);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      const a = d.ascendant;
+      out.innerHTML = '<div class="card"><p class="big">' + a.rashi + ' Rising</p><p class="muted">' + a.nakshatra + ' · pada ' + a.pada + ' · born in ' + p.name + ', ' + (p.country || '') + '</p><div class="grid">' +
+        Object.entries(d.planets).map(([n, v]) => '<div class="planet"><b>' + n + (v.retrograde ? ' ℞' : '') + '</b><span>' + v.rashi + ' ' + v.degreeInSign + '°<br>' + v.nakshatra + ' · pada ' + v.pada + '</span></div>').join('') + '</div></div>';
+    } catch (err) { out.innerHTML = '<p class="err">' + err.message + '</p>'; }
+    btn.disabled = false; btn.textContent = 'Generate chart';
+  });
+</script>
+</body>
+</html>
